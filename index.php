@@ -3,11 +3,23 @@ session_start();
 
 require_once 'init.php';
 
+// Načtení parametru page z URL, výchozí hodnota je "home"
+$page = $_GET["page"] ?? "home";
+
+// Validace page parametru - jen povolené stránky
+$allowed_pages = ['home', 'interests', 'skills'];
+if (!in_array($page, $allowed_pages)) {
+    $page = 'not_found';
+}
+
 // načtení profilu z databáze
 $stmt = $db->query("SELECT * FROM profile WHERE id = 1");
 $profile = $stmt->fetch(PDO::FETCH_ASSOC);
 $name = $profile ? $profile['name'] : 'Neznámý uživatel';
-$skills = $profile ? json_decode($profile['skills_json'], true) : [];
+
+// načtení dovedností z databáze
+$stmt = $db->query("SELECT * FROM skills ORDER BY name");
+$skills = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // načtení zájmů z databáze
 $stmt = $db->query("SELECT * FROM interests");
@@ -46,7 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         }
-        header("Location: index.php");
+        header("Location: index.php?page=interests");
         exit;
     }
     // odstranění zájmu
@@ -61,14 +73,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['message'] = 'Zájem nebyl nalezen.';
             $_SESSION['messageType'] = 'error';
         }
-        header("Location: index.php");
+        header("Location: index.php?page=interests");
         exit;
     }
     // zahájení editace zájmu
     elseif (isset($_POST['edit_interest'])) {
         $id = (int)$_POST['edit_interest'];
         $_SESSION['editing_interest'] = $id;
-        header("Location: index.php");
+        header("Location: index.php?page=interests");
         exit;
     }
     // uložení editace zájmu
@@ -100,13 +112,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         }
-        header("Location: index.php");
+        header("Location: index.php?page=interests");
         exit;
     }
     // zrušení editace zájmu
     elseif (isset($_POST['cancel_edit_interest'])) {
         unset($_SESSION['editing_interest']);
-        header("Location: index.php");
+        header("Location: index.php?page=interests");
         exit;
     }
     // přidání projektu
@@ -131,7 +143,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         }
-        header("Location: index.php");
+        header("Location: index.php?page=skills");
         exit;
     }
     // odstranění projektu
@@ -146,14 +158,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['message'] = 'Projekt nebyl nalezen.';
             $_SESSION['messageType'] = 'error';
         }
-        header("Location: index.php");
+        header("Location: index.php?page=skills");
         exit;
     }
     // zahájení editace projektu
     elseif (isset($_POST['edit_project'])) {
         $id = (int)$_POST['edit_project'];
         $_SESSION['editing_project'] = $id;
-        header("Location: index.php");
+        header("Location: index.php?page=skills");
         exit;
     }
     // uložení editace projektu
@@ -185,19 +197,105 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         }
-        header("Location: index.php");
+        header("Location: index.php?page=skills");
         exit;
     }
     // zrušení editace projektu
     elseif (isset($_POST['cancel_edit_project'])) {
         unset($_SESSION['editing_project']);
-        header("Location: index.php");
+        header("Location: index.php?page=skills");
+        exit;
+    }
+    // přidání dovednosti
+    elseif (isset($_POST['new_skill'])) {
+        $new = trim($_POST['new_skill']);
+        if ($new === '') {
+            $_SESSION['message'] = 'Pole nesmí být prázdné.';
+            $_SESSION['messageType'] = 'error';
+        } else {
+            try {
+                $stmt = $db->prepare("INSERT INTO skills (name) VALUES (?)");
+                $stmt->execute([$new]);
+                $_SESSION['message'] = 'Dovednost byla přidána.';
+                $_SESSION['messageType'] = 'success';
+            } catch (PDOException $e) {
+                if ($e->getCode() == 23000) { // UNIQUE constraint failed
+                    $_SESSION['message'] = 'Tato dovednost už existuje.';
+                    $_SESSION['messageType'] = 'error';
+                } else {
+                    $_SESSION['message'] = 'Chyba při přidávání dovednosti.';
+                    $_SESSION['messageType'] = 'error';
+                }
+            }
+        }
+        header("Location: index.php?page=skills");
+        exit;
+    }
+    // odstranění dovednosti
+    elseif (isset($_POST['remove_skill'])) {
+        $id = (int)$_POST['remove_skill'];
+        $stmt = $db->prepare("DELETE FROM skills WHERE id = ?");
+        $stmt->execute([$id]);
+        if ($stmt->rowCount() > 0) {
+            $_SESSION['message'] = 'Dovednost byla odstraněna.';
+            $_SESSION['messageType'] = 'success';
+        } else {
+            $_SESSION['message'] = 'Dovednost nebyla nalezena.';
+            $_SESSION['messageType'] = 'error';
+        }
+        header("Location: index.php?page=skills");
+        exit;
+    }
+    // zahájení editace dovednosti
+    elseif (isset($_POST['edit_skill'])) {
+        $id = (int)$_POST['edit_skill'];
+        $_SESSION['editing_skill'] = $id;
+        header("Location: index.php?page=skills");
+        exit;
+    }
+    // uložení editace dovednosti
+    elseif (isset($_POST['save_edit_skill'])) {
+        $id = (int)$_POST['save_edit_skill'];
+        $new_value = trim($_POST['edited_skill']);
+        if ($new_value === '') {
+            $_SESSION['message'] = 'Pole nesmí být prázdné.';
+            $_SESSION['messageType'] = 'error';
+        } else {
+            try {
+                $stmt = $db->prepare("UPDATE skills SET name = ? WHERE id = ?");
+                $stmt->execute([$new_value, $id]);
+                if ($stmt->rowCount() > 0) {
+                    $_SESSION['message'] = 'Dovednost byla upravena.';
+                    $_SESSION['messageType'] = 'success';
+                    unset($_SESSION['editing_skill']);
+                } else {
+                    $_SESSION['message'] = 'Dovednost nebyla nalezena.';
+                    $_SESSION['messageType'] = 'error';
+                }
+            } catch (PDOException $e) {
+                if ($e->getCode() == 23000) { // UNIQUE constraint failed
+                    $_SESSION['message'] = 'Tato dovednost už existuje.';
+                    $_SESSION['messageType'] = 'error';
+                } else {
+                    $_SESSION['message'] = 'Chyba při úpravě dovednosti.';
+                    $_SESSION['messageType'] = 'error';
+                }
+            }
+        }
+        header("Location: index.php?page=skills");
+        exit;
+    }
+    // zrušení editace dovednosti
+    elseif (isset($_POST['cancel_edit_skill'])) {
+        unset($_SESSION['editing_skill']);
+        header("Location: index.php?page=skills");
         exit;
     }
 }
 
 $editing_interest = isset($_SESSION['editing_interest']) ? $_SESSION['editing_interest'] : null;
 $editing_project = isset($_SESSION['editing_project']) ? $_SESSION['editing_project'] : null;
+$editing_skill = isset($_SESSION['editing_skill']) ? $_SESSION['editing_skill'] : null;
 
 ?>
 
@@ -212,131 +310,21 @@ $editing_project = isset($_SESSION['editing_project']) ? $_SESSION['editing_proj
 <body>
   <header>
     <h1><?php echo htmlspecialchars($name); ?></h1>
+    <nav>
+      <a href="?page=home">Domů</a>
+      <a href="?page=interests">Zájmy</a>
+      <a href="?page=skills">Dovednosti</a>
+    </nav>
   </header>
   <main>
-    <section>
-      <h2>Dovednosti</h2>
-      <?php if (!empty($skills)): ?>
-        <ul>
-          <?php foreach ($skills as $skill): ?>
-            <li><?php echo htmlspecialchars($skill); ?></li>
-          <?php endforeach; ?>
-        </ul>
-      <?php else: ?>
-        <p>Žádné dovednosti nebyly uvedeny.</p>
-      <?php endif; ?>
-    </section>
-    <section>
-      <h2>Zájmy</h2>
-      <?php if (!empty($interests)): ?>
-        <ul>
-          <?php foreach ($interests as $interest): ?>
-            <li>
-              <?php echo htmlspecialchars($interest['name']); ?>
-              <form method="POST" style="display: inline;">
-                <input type="hidden" name="edit_interest" value="<?php echo $interest['id']; ?>">
-                <button type="submit">Upravit</button>
-              </form>
-              <form method="POST" style="display: inline;">
-                <input type="hidden" name="remove_interest" value="<?php echo $interest['id']; ?>">
-                <button type="submit" onclick="return confirm('Opravdu chcete odstranit tento zájem?')">Smazat</button>
-              </form>
-            </li>
-          <?php endforeach; ?>
-        </ul>
-      <?php else: ?>
-        <p>Žádné projekty nebo zájmy nebyly uvedeny.</p>
-      <?php endif; ?>
-
-      <!-- zpráva o výsledku formuláře -->
-      <?php if (!empty($message)): ?>
-        <p class="<?php echo htmlspecialchars($messageType); ?>">
-          <?php echo htmlspecialchars($message); ?>
-        </p>
-      <?php endif; ?>
-
-      <!-- formulář pro editaci zájmu, pokud je aktivní -->
-      <?php if ($editing_interest !== null): ?>
-        <?php
-        // Najdeme zájem podle id
-        $editing_item = null;
-        foreach ($interests as $interest) {
-          if ($interest['id'] == $editing_interest) {
-            $editing_item = $interest;
-            break;
-          }
-        }
-        ?>
-        <?php if ($editing_item): ?>
-          <h3>Upravit zájem</h3>
-          <form method="POST">
-            <input type="text" name="edited_interest" value="<?php echo htmlspecialchars($editing_item['name']); ?>" required>
-            <input type="hidden" name="save_edit_interest" value="<?php echo $editing_item['id']; ?>">
-            <button type="submit">Uložit změny</button>
-            <button type="submit" name="cancel_edit_interest">Zrušit</button>
-          </form>
-        <?php endif; ?>
-      <?php endif; ?>
-
-      <!-- formulář pro nový zájem -->
-      <h3>Přidat nový zájem</h3>
-      <form method="POST">
-        <input type="text" name="new_interest" required>
-        <button type="submit">Přidat zájem</button>
-      </form>
-    </section>
-    <section>
-      <h2>Projekty</h2>
-      <?php if (!empty($real_projects)): ?>
-        <ul>
-          <?php foreach ($real_projects as $project): ?>
-            <li>
-              <?php echo htmlspecialchars($project['name']); ?>
-              <form method="POST" style="display: inline;">
-                <input type="hidden" name="edit_project" value="<?php echo $project['id']; ?>">
-                <button type="submit">Upravit</button>
-              </form>
-              <form method="POST" style="display: inline;">
-                <input type="hidden" name="remove_project" value="<?php echo $project['id']; ?>">
-                <button type="submit" onclick="return confirm('Opravdu chcete odstranit tento projekt?')">Smazat</button>
-              </form>
-            </li>
-          <?php endforeach; ?>
-        </ul>
-      <?php else: ?>
-        <p>Žádné projekty nebyly uvedeny.</p>
-      <?php endif; ?>
-
-      <!-- formulář pro editaci projektu, pokud je aktivní -->
-      <?php if ($editing_project !== null): ?>
-        <?php
-        // Najdeme projekt podle id
-        $editing_proj = null;
-        foreach ($real_projects as $project) {
-          if ($project['id'] == $editing_project) {
-            $editing_proj = $project;
-            break;
-          }
-        }
-        ?>
-        <?php if ($editing_proj): ?>
-          <h3>Upravit projekt</h3>
-          <form method="POST">
-            <input type="text" name="edited_project" value="<?php echo htmlspecialchars($editing_proj['name']); ?>" required>
-            <input type="hidden" name="save_edit_project" value="<?php echo $editing_proj['id']; ?>">
-            <button type="submit">Uložit změny</button>
-            <button type="submit" name="cancel_edit_project">Zrušit</button>
-          </form>
-        <?php endif; ?>
-      <?php endif; ?>
-
-      <!-- formulář pro nový projekt -->
-      <h3>Přidat nový projekt</h3>
-      <form method="POST">
-        <input type="text" name="new_project" required>
-        <button type="submit">Přidat projekt</button>
-      </form>
-    </section>
+    <?php
+    // Načtení stránky podle parametru page
+    if ($page === 'not_found') {
+        require 'pages/not_found.php';
+    } else {
+        require "pages/{$page}.php";
+    }
+    ?>
   </main>
 </body>
 </html>

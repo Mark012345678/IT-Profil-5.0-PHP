@@ -21,6 +21,12 @@ $db->exec("CREATE TABLE IF NOT EXISTS projects (
     name TEXT NOT NULL UNIQUE
 )");
 
+// Vytvoření tabulky skills, pokud neexistuje
+$db->exec("CREATE TABLE IF NOT EXISTS skills (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE
+)");
+
 // Vložení výchozích dat do profile
 $stmt = $db->prepare("INSERT OR IGNORE INTO profile (id, name, skills_json) VALUES (1, ?, ?)");
 $stmt->execute(['Marek Novák', json_encode(['PHP', 'HTML', 'CSS', 'Git', 'SQL'])]);
@@ -30,5 +36,16 @@ $default_projects = ["Webová prezentace", "API pro správu úloh", "Interní n�
 $stmt = $db->prepare("INSERT OR IGNORE INTO projects (name) VALUES (?)");
 foreach ($default_projects as $project) {
     $stmt->execute([$project]);
+}
+
+// Vložení výchozích dovedností
+$stmt_check = $db->query("SELECT COUNT(*) as count FROM skills");
+$result = $stmt_check->fetch(PDO::FETCH_ASSOC);
+if ($result['count'] == 0) {
+    $default_skills = ["PHP", "HTML", "CSS", "Git", "SQL"];
+    $stmt_skill = $db->prepare("INSERT OR IGNORE INTO skills (name) VALUES (?)");
+    foreach ($default_skills as $skill) {
+        $stmt_skill->execute([$skill]);
+    }
 }
 ?>
